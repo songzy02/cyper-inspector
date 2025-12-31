@@ -1,0 +1,82 @@
+version: '3.8'
+
+services:
+  # MySQL 数据库
+  mysql:
+    image: mysql:8.0
+    container_name: cyber-inspector-mysql
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: root123
+      MYSQL_DATABASE: cyber_inspector
+      MYSQL_USER: inspector
+      MYSQL_PASSWORD: inspector123
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./scripts/mysql/init:/docker-entrypoint-initdb.d
+    networks:
+      - cyber-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      timeout: 20s
+      retries: 10
+      interval: 10s
+      start_period: 30s
+
+  # Master 服务
+  master:
+    build:
+      context: .
+      dockerfile: Dockerfile.master
+    container_name: cyber-inspector-master
+    restart: always
+    depends_on:
+      mysql:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+    environment:
+      - TZ=Asia/Shanghai
+    volumes:
+      - ./configs:/app/configs
+      - ./logs:/app/logs
+      - ./web:/app/web
+    networks:
+      - cyber-network
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health"]
+      timeout: 10s
+      retries: 5
+      interval: 30s
+      start_period: 40s
+
+  # Agent 服务（示例）
+  agent1:
+    build:
+      context: .
+      dockerfile: Dockerfile.agent
+    container_name: cyber-inspector-agent1
+    restart: always
+    environment:
+      - TZ=Asia/Shanghai
+      - AGENT_PORT=8083
+    ports:
+      - "8083:8083"
+    networks:
+      - cyber-network
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8083/health"]
+      timeout: 10s
+      retries: 5
+      interval: 30s
+      start_period: 40s
+
+networks:
+  cyber-network:
+    driver: bridge
+
+volumes:
+  mysql_data:
+    driver: local

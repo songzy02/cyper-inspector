@@ -1,0 +1,785 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cyber Inspector | 智能分布式巡检监控系统</title>
+    <link rel="icon" type="image/x-icon" href="/static/favicon.ico">
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- ECharts -->
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+        
+        :root {
+            --bg-primary: #0d0d1a;
+            --bg-secondary: #16162b;
+            --bg-card: rgba(22, 22, 40, 0.6);
+            --cyan: #00f9f9;
+            --purple: #9d4edd;
+            --green: #00ff88;
+            --red: #ff0055;
+            --yellow: #ffc700;
+            --text-primary: #ffffff;
+            --text-secondary: #a0a0b0;
+        }
+        
+        body {
+            font-family: 'Inter', sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+        
+        /* 动态网格背景 */
+        .grid-bg {
+            position: fixed;
+            inset: 0;
+            z-index: -1;
+            background: 
+                linear-gradient(90deg, var(--cyan) 1px, transparent 1px),
+                linear-gradient(180deg, var(--cyan) 1px, transparent 1px);
+            background-size: 40px 40px;
+            mask: radial-gradient(circle at center, white 30%, transparent 90%);
+            opacity: 0.08;
+            animation: move 20s linear infinite;
+        }
+        
+        @keyframes move {
+            0% { transform: translate(0, 0); }
+            100% { transform: translate(40px, 40px); }
+        }
+        
+        /* 玻璃拟态效果 */
+        .glass {
+            backdrop-filter: blur(12px);
+            background: rgba(22, 22, 40, 0.6);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 1rem;
+            box-shadow: 0 8px 32px rgba(0, 249, 249, 0.15);
+            transition: all 0.3s ease;
+        }
+        
+        .glass:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 12px 40px rgba(0, 249, 249, 0.25);
+        }
+        
+        /* 状态指示灯 */
+        .status-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            position: relative;
+            animation: breathe 2s infinite;
+        }
+        
+        .status-ok { background: var(--green); }
+        .status-warning { background: var(--yellow); }
+        .status-critical { background: var(--red); }
+        .status-unknown { background: var(--text-secondary); }
+        
+        @keyframes breathe {
+            0%, 100% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.2); opacity: 0.7; }
+        }
+        
+        /* 按钮样式 */
+        .btn {
+            padding: 0.5rem 1rem;
+            border-radius: 0.5rem;
+            border: none;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        
+        .btn-primary {
+            background: var(--cyan);
+            color: var(--bg-primary);
+        }
+        
+        .btn-primary:hover {
+            transform: scale(1.05);
+            box-shadow: 0 4px 20px rgba(0, 249, 249, 0.4);
+        }
+        
+        .btn-secondary {
+            background: var(--purple);
+            color: white;
+        }
+        
+        .btn-secondary:hover {
+            transform: scale(1.05);
+            box-shadow: 0 4px 20px rgba(157, 78, 221, 0.4);
+        }
+        
+        .btn-danger {
+            background: var(--red);
+            color: white;
+        }
+        
+        .btn-danger:hover {
+            transform: scale(1.05);
+            box-shadow: 0 4px 20px rgba(255, 0, 85, 0.4);
+        }
+        
+        /* 节点卡片 */
+        .node-card {
+            background: rgba(22, 22, 40, 0.6);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 1rem;
+            padding: 1.5rem;
+            position: relative;
+            transition: all 0.3s ease;
+        }
+        
+        .node-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 32px rgba(0, 249, 249, 0.15);
+        }
+        
+        .node-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+        }
+        
+        .node-name {
+            font-size: 1.125rem;
+            font-weight: 600;
+        }
+        
+        .node-ip {
+            color: var(--text-secondary);
+            font-size: 0.875rem;
+        }
+        
+        .node-actions {
+            display: flex;
+            gap: 0.5rem;
+            margin-top: 1rem;
+        }
+        
+        /* 模态框 */
+        .modal {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(4px);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 2000;
+            opacity: 0;
+            visibility: hidden;
+            transition: all 0.3s ease;
+        }
+        
+        .modal.show {
+            opacity: 1;
+            visibility: visible;
+        }
+        
+        .modal-content {
+            background: rgba(22, 22, 40, 0.9);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 1rem;
+            padding: 2rem;
+            width: 90%;
+            max-width: 500px;
+            max-height: 90vh;
+            overflow-y: auto;
+            transform: scale(0.9);
+            transition: transform 0.3s ease;
+        }
+        
+        .modal.show .modal-content {
+            transform: scale(1);
+        }
+        
+        /* 表单样式 */
+        .form-group {
+            margin-bottom: 1rem;
+        }
+        
+        .form-label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-weight: 500;
+        }
+        
+        .form-input {
+            width: 100%;
+            padding: 0.75rem;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 0.5rem;
+            color: var(--text-primary);
+            transition: all 0.3s ease;
+        }
+        
+        .form-input:focus {
+            outline: none;
+            border-color: var(--cyan);
+            box-shadow: 0 0 0 3px rgba(0, 249, 249, 0.1);
+        }
+        
+        /* 统计卡片 */
+        .stat-card {
+            background: rgba(22, 22, 40, 0.6);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 1rem;
+            padding: 1.5rem;
+            text-align: center;
+            transition: all 0.3s ease;
+        }
+        
+        .stat-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 12px 40px rgba(0, 249, 249, 0.2);
+        }
+        
+        .stat-value {
+            font-size: 2rem;
+            font-weight: 800;
+            margin-bottom: 0.5rem;
+        }
+        
+        .stat-label {
+            color: var(--text-secondary);
+            font-size: 0.875rem;
+        }
+        
+        /* 响应式设计 */
+        @media (max-width: 768px) {
+            .nodes-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .stats-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+        
+        @media (max-width: 480px) {
+            .stats-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+        
+        /* 动画效果 */
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        .fade-in {
+            animation: fadeIn 0.5s ease forwards;
+        }
+    </style>
+</head>
+<body>
+    <!-- 动态网格背景 -->
+    <div class="grid-bg"></div>
+    
+    <!-- 导航栏 -->
+    <nav class="fixed top-0 left-0 right-0 z-50 glass">
+        <div class="flex items-center justify-between px-6 py-4">
+            <!-- Logo -->
+            <div class="flex items-center gap-3">
+                <i class="fas fa-server text-cyan-400 text-2xl"></i>
+                <span class="text-xl font-bold text-cyan-400">Cyber Inspector</span>
+            </div>
+            
+            <!-- 导航菜单 -->
+            <div class="hidden md:flex items-center gap-6">
+                <a href="#" class="nav-link active" onclick="showPage('dashboard')">
+                    <i class="fas fa-tachometer-alt"></i>
+                    <span>仪表盘</span>
+                </a>
+                <a href="#" class="nav-link" onclick="showPage('nodes')">
+                    <i class="fas fa-server"></i>
+                    <span>节点管理</span>
+                </a>
+                <a href="#" class="nav-link" onclick="showPage('alerts')">
+                    <i class="fas fa-bell"></i>
+                    <span>告警记录</span>
+                </a>
+            </div>
+            
+            <!-- 用户菜单 -->
+            <div class="flex items-center gap-4">
+                <button id="triggerBtn" class="btn btn-primary">
+                    <i class="fas fa-play"></i>
+                    立即巡检
+                </button>
+                <div class="relative">
+                    <button id="userMenuToggle" class="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-white hover:bg-opacity-10 transition-colors">
+                        <div class="w-8 h-8 bg-cyan-400 rounded-full flex items-center justify-center">
+                            <i class="fas fa-user text-white text-sm"></i>
+                        </div>
+                        <span id="currentUser">管理员</span>
+                        <i class="fas fa-chevron-down text-sm"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </nav>
+    
+    <!-- 主内容区 -->
+    <main class="mt-20 px-6 py-8">
+        <!-- 仪表盘页面 -->
+        <div id="dashboardPage" class="page">
+            <!-- 统计卡片 -->
+            <div class="stats-grid grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+                <div class="stat-card">
+                    <div class="stat-value text-cyan-400" id="totalNodes">0</div>
+                    <div class="stat-label">总节点数</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value text-green-400" id="onlineNodes">0</div>
+                    <div class="stat-label">在线节点</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value text-red-400" id="criticalNodes">0</div>
+                    <div class="stat-label">告警节点</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value text-purple-400" id="healthScore">100%</div>
+                    <div class="stat-label">健康度</div>
+                </div>
+            </div>
+            
+            <!-- 节点列表 -->
+            <div class="card glass">
+                <div class="flex items-center justify-between mb-6">
+                    <h3 class="text-xl font-bold">节点状态</h3>
+                    <button id="addNodeBtn" class="btn btn-primary">
+                        <i class="fas fa-plus"></i>
+                        添加节点
+                    </button>
+                </div>
+                
+                <div id="nodesList" class="nodes-grid grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    <!-- 节点卡片将在这里动态加载 -->
+                </div>
+            </div>
+        </div>
+        
+        <!-- 节点管理页面 -->
+        <div id="nodesPage" class="page hidden">
+            <div class="flex items-center justify-between mb-6">
+                <h2 class="text-2xl font-bold">节点管理</h2>
+                <button id="addNodeBtn2" class="btn btn-primary">
+                    <i class="fas fa-plus"></i>
+                    添加节点
+                </button>
+            </div>
+            
+            <div id="nodesList2" class="nodes-grid grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <!-- 节点卡片将在这里动态加载 -->
+            </div>
+        </div>
+        
+        <!-- 告警记录页面 -->
+        <div id="alertsPage" class="page hidden">
+            <h2 class="text-2xl font-bold mb-6">告警记录</h2>
+            <div class="card glass">
+                <p class="text-gray-400">告警记录功能开发中...</p>
+            </div>
+        </div>
+    </main>
+    
+    <!-- 添加节点模态框 -->
+    <div id="addNodeModal" class="modal">
+        <div class="modal-content">
+            <div class="flex items-center justify-between mb-6">
+                <h3 class="text-xl font-bold">添加节点</h3>
+                <button class="modal-close text-gray-400 hover:text-white" onclick="hideModal('addNodeModal')">
+                    <i class="fas fa-times text-xl"></i>
+                </button>
+            </div>
+            
+            <form id="addNodeForm">
+                <div class="form-group">
+                    <label class="form-label" for="nodeName">节点名称</label>
+                    <input type="text" id="nodeName" class="form-input" placeholder="请输入节点名称" required>
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label" for="nodeIP">IP 地址</label>
+                    <input type="text" id="nodeIP" class="form-input" placeholder="请输入 IP 地址" required>
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label" for="nodeURL">Agent URL</label>
+                    <input type="url" id="nodeURL" class="form-input" placeholder="http://ip:8083" required>
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label" for="checkInterval">巡检间隔（秒）</label>
+                    <input type="number" id="checkInterval" class="form-input" value="300" min="30" required>
+                </div>
+                
+                <div class="form-group">
+                    <label class="flex items-center gap-2">
+                        <input type="checkbox" id="nodeEnabled" checked>
+                        <span>立即启用</span>
+                    </label>
+                </div>
+                
+                <div class="flex gap-3 mt-6">
+                    <button type="submit" class="btn btn-primary flex-1">
+                        <i class="fas fa-save"></i>
+                        保存
+                    </button>
+                    <button type="button" class="btn btn-secondary flex-1" onclick="hideModal('addNodeModal')">
+                        <i class="fas fa-times"></i>
+                        取消
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+    
+    <!-- 登录模态框 -->
+    <div id="loginModal" class="modal show">
+        <div class="modal-content max-w-md">
+            <div class="text-center mb-6">
+                <div class="w-16 h-16 bg-cyan-400 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <i class="fas fa-user text-white text-2xl"></i>
+                </div>
+                <h3 class="text-xl font-bold">用户登录</h3>
+            </div>
+            
+            <form id="loginForm">
+                <div class="form-group">
+                    <label class="form-label" for="username">用户名</label>
+                    <input type="text" id="username" class="form-input" placeholder="请输入用户名" required>
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label" for="password">密码</label>
+                    <input type="password" id="password" class="form-input" placeholder="请输入密码" required>
+                </div>
+                
+                <div class="flex gap-3 mt-6">
+                    <button type="submit" class="btn btn-primary flex-1">
+                        <i class="fas fa-sign-in-alt"></i>
+                        登录
+                    </button>
+                    <button type="button" class="btn btn-secondary" onclick="alert('请联系管理员重置密码')">
+                        忘记密码
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+    
+    <script>
+        // 全局变量
+        let authToken = localStorage.getItem('authToken');
+        
+        // 页面切换
+        function showPage(pageName) {
+            // 隐藏所有页面
+            document.querySelectorAll('.page').forEach(page => {
+                page.classList.add('hidden');
+            });
+            
+            // 显示目标页面
+            document.getElementById(pageName + 'Page').classList.remove('hidden');
+            
+            // 更新导航状态
+            document.querySelectorAll('.nav-link').forEach(link => {
+                link.classList.remove('active');
+            });
+            document.querySelectorAll(`[onclick*="${pageName}"]`).forEach(link => {
+                link.classList.add('active');
+            });
+        }
+        
+        // 模态框控制
+        function showModal(modalId) {
+            document.getElementById(modalId).classList.add('show');
+        }
+        
+        function hideModal(modalId) {
+            document.getElementById(modalId).classList.remove('show');
+        }
+        
+        // API 请求封装
+        async function apiRequest(url, options = {}) {
+            const headers = {
+                'Content-Type': 'application/json',
+                ...options.headers
+            };
+            
+            if (authToken) {
+                headers['Authorization'] = `Bearer ${authToken}`;
+            }
+            
+            const response = await fetch(url, {
+                ...options,
+                headers
+            });
+            
+            if (response.status === 401) {
+                localStorage.removeItem('authToken');
+                showModal('loginModal');
+                throw new Error('登录已过期');
+            }
+            
+            return response;
+        }
+        
+        // 登录处理
+        async function handleLogin(event) {
+            event.preventDefault();
+            
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            
+            try {
+                const response = await fetch('/api/auth/login', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ username, password })
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    authToken = data.token;
+                    localStorage.setItem('authToken', authToken);
+                    
+                    document.getElementById('currentUser').textContent = data.user.username;
+                    hideModal('loginModal');
+                    
+                    loadDashboard();
+                    loadNodes();
+                } else {
+                    alert(data.error || '登录失败');
+                }
+            } catch (error) {
+                alert('网络错误: ' + error.message);
+            }
+        }
+        
+        // 加载仪表盘数据
+        async function loadDashboard() {
+            try {
+                const response = await apiRequest('/api/agents');
+                const data = await response.json();
+                
+                const agents = data.agents || [];
+                const statusMap = data.statusMap || {};
+                
+                let onlineNodes = 0;
+                let criticalNodes = 0;
+                
+                agents.forEach(agent => {
+                    if (!agent.enabled) return;
+                    
+                    const status = statusMap[agent.id];
+                    if (status) {
+                        if (status.level === 'CRITICAL') {
+                            criticalNodes++;
+                        } else if (status.level === 'OK') {
+                            onlineNodes++;
+                        }
+                    }
+                });
+                
+                document.getElementById('totalNodes').textContent = agents.filter(a => a.enabled).length;
+                document.getElementById('onlineNodes').textContent = onlineNodes;
+                document.getElementById('criticalNodes').textContent = criticalNodes;
+                
+                const healthScore = agents.length > 0 ? Math.round((onlineNodes / agents.length) * 100) : 100;
+                document.getElementById('healthScore').textContent = healthScore + '%';
+            } catch (error) {
+                console.error('加载仪表盘数据失败:', error);
+            }
+        }
+        
+        // 加载节点列表
+        async function loadNodes() {
+            try {
+                const response = await apiRequest('/api/agents');
+                const data = await response.json();
+                
+                const agents = data.agents || [];
+                const statusMap = data.statusMap || {};
+                
+                const nodesList = document.getElementById('nodesList');
+                const nodesList2 = document.getElementById('nodesList2');
+                
+                nodesList.innerHTML = '';
+                nodesList2.innerHTML = '';
+                
+                agents.forEach(agent => {
+                    const nodeCard = createNodeCard(agent, statusMap[agent.id]);
+                    nodesList.appendChild(nodeCard.cloneNode(true));
+                    nodesList2.appendChild(nodeCard);
+                });
+            } catch (error) {
+                console.error('加载节点列表失败:', error);
+            }
+        }
+        
+        // 创建节点卡片
+        function createNodeCard(agent, status) {
+            const card = document.createElement('div');
+            card.className = 'node-card fade-in';
+            
+            const statusClass = agent.enabled ? (status ? status.level.toLowerCase() : 'unknown') : 'unknown';
+            
+            card.innerHTML = `
+                <div class="node-header">
+                    <div>
+                        <div class="node-name">${agent.name}</div>
+                        <div class="node-ip">${agent.ip}</div>
+                    </div>
+                    <div class="status-dot status-${statusClass}"></div>
+                </div>
+                
+                <div class="text-sm text-gray-400 mb-3">
+                    巡检间隔: ${agent.check_interval}秒
+                </div>
+                
+                <div class="node-actions">
+                    <button class="btn btn-secondary flex-1" onclick="editNode(${agent.id})">
+                        <i class="fas fa-edit"></i>
+                        编辑
+                    </button>
+                    <button class="btn btn-danger flex-1" onclick="deleteNode(${agent.id})">
+                        <i class="fas fa-trash"></i>
+                        删除
+                    </button>
+                </div>
+            `;
+            
+            return card;
+        }
+        
+        // 添加节点
+        async function handleAddNode(event) {
+            event.preventDefault();
+            
+            const formData = {
+                name: document.getElementById('nodeName').value,
+                ip: document.getElementById('nodeIP').value,
+                url: document.getElementById('nodeURL').value,
+                check_interval: parseInt(document.getElementById('checkInterval').value),
+                enabled: document.getElementById('nodeEnabled').checked
+            };
+            
+            try {
+                const response = await apiRequest('/api/agents', {
+                    method: 'POST',
+                    body: JSON.stringify(formData)
+                });
+                
+                if (response.ok) {
+                    hideModal('addNodeModal');
+                    loadNodes();
+                    document.getElementById('addNodeForm').reset();
+                    alert('节点添加成功');
+                } else {
+                    const error = await response.json();
+                    alert(error.error || '添加失败');
+                }
+            } catch (error) {
+                alert('网络错误: ' + error.message);
+            }
+        }
+        
+        // 删除节点
+        async function deleteNode(id) {
+            if (!confirm('确定要删除这个节点吗？')) return;
+            
+            try {
+                const response = await apiRequest(`/api/agents/${id}`, {
+                    method: 'DELETE'
+                });
+                
+                if (response.ok) {
+                    loadNodes();
+                    alert('节点删除成功');
+                } else {
+                    alert('删除失败');
+                }
+            } catch (error) {
+                alert('网络错误: ' + error.message);
+            }
+        }
+        
+        // 编辑节点（简化版）
+        function editNode(id) {
+            alert('编辑功能开发中...');
+        }
+        
+        // 立即巡检
+        async function triggerCheck() {
+            try {
+                const response = await apiRequest('/api/trigger', {
+                    method: 'POST'
+                });
+                
+                if (response.ok) {
+                    alert('巡检任务已触发');
+                } else {
+                    alert('触发失败');
+                }
+            } catch (error) {
+                alert('网络错误: ' + error.message);
+            }
+        }
+        
+        // 事件监听器
+        document.addEventListener('DOMContentLoaded', function() {
+            // 登录表单
+            document.getElementById('loginForm').addEventListener('submit', handleLogin);
+            
+            // 添加节点
+            document.getElementById('addNodeBtn').addEventListener('click', () => showModal('addNodeModal'));
+            document.getElementById('addNodeBtn2').addEventListener('click', () => showModal('addNodeModal'));
+            document.getElementById('addNodeForm').addEventListener('submit', handleAddNode);
+            
+            // 立即巡检
+            document.getElementById('triggerBtn').addEventListener('click', triggerCheck);
+            
+            // 点击模态框背景关闭
+            document.querySelectorAll('.modal').forEach(modal => {
+                modal.addEventListener('click', function(e) {
+                    if (e.target === this) {
+                        hideModal(this.id);
+                    }
+                });
+            });
+            
+            // 检查登录状态
+            if (authToken) {
+                loadDashboard();
+                loadNodes();
+                hideModal('loginModal');
+            }
+        });
+    </script>
+</body>
+</html>
