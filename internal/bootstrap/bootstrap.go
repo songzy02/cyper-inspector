@@ -56,7 +56,7 @@ func Run() error {
 	setupMiddleware(engine)
 
 	// 注册路由
-	setupRoutes(engine, repo, checker)
+	setupRoutes(engine, repo, checker, db)
 
 	// 创建 HTTP 服务器
 	srv := &http.Server{
@@ -146,7 +146,7 @@ func setupMiddleware(engine *gin.Engine) {
 }
 
 // setupRoutes 注册路由
-func setupRoutes(engine *gin.Engine, repo *repository.Repository, checker *service.Checker) {
+func setupRoutes(engine *gin.Engine, repo *repository.Repository, checker *service.Checker, db *gorm.DB) {
 	// 健康检查
 	engine.GET("/health", func(c *gin.Context) {
 		c.JSON(200, gin.H{
@@ -154,7 +154,14 @@ func setupRoutes(engine *gin.Engine, repo *repository.Repository, checker *servi
 			"version": config.Conf.App.Version,
 		})
 	})
-
+	//就绪探针
+	engine.GET("/readyz", func(c *gin.Context) {
+		if err := readyCheck(db); err != nil {
+			c.JSON(503, gin.H{"status": "not ready", "reason": err.Error()})
+			return
+		}
+		c.JSON(200, gin.H{"status": "ready"})
+	})
 	// API 路由组
 	api := engine.Group("/api")
 	{
@@ -190,6 +197,20 @@ func setupRoutes(engine *gin.Engine, repo *repository.Repository, checker *servi
 	engine.NoRoute(func(c *gin.Context) {
 		c.JSON(404, gin.H{"error": "接口不存在"})
 	})
+
+}
+
+// readyCheck 返回 nil 表示已就绪
+// readyCheck 返回 nil 表示已就绪
+func readyCheck(db *gorm.DB) error {
+	sqlDB, err := db.DB()
+	if err != nil {
+		return fmt.Errorf("get sql db: %w", err)
+	}
+	if err := sqlDB.Ping(); err != nil {
+		return fmt.Errorf("db ping: %w", err)
+	}
+	return nil
 }
 
 // corsMiddleware CORS中间件
